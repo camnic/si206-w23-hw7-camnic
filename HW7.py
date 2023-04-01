@@ -165,13 +165,39 @@ def position_birth_search(position, age, cur, conn):
 #     the passed year. 
 
 def make_winners_table(data, cur, conn):
-    pass
+    cur.execute("CREATE TABLE IF NOT EXISTS Winners (id INTEGER PRIMARY KEY, name TEXT)")
+
+    for season in data['seasons']:
+        if season['winner'] is not None:
+            team = season['winner']
+            cur.execute("INSERT OR IGNORE INTO Winners (id, name) VALUES (?, ?)", (team['id'], team['name']))
+    
+    conn.commit()
 
 def make_seasons_table(data, cur, conn):
-    pass
+    cur.execute("CREATE TABLE IF NOT EXISTS Seasons (id INTEGER PRIMARY KEY, winner_id INTEGER, end_year INTEGER)")
+
+    for season in data['seasons']:
+        if season['winner'] is not None:
+            winner_name = season['winner']['name']
+            winner_id_query = f"SELECT id FROM Winners WHERE name='{winner_name}'"
+            cur.execute(winner_id_query)
+            winner_id = cur.fetchone()[0]
+
+            end_year = int(season['endDate'][:4])
+
+            cur.execute("INSERT OR IGNORE INTO Seasons (id, winner_id, end_year) VALUES (?, ?, ?)", (season['id'], winner_id, end_year))
+    
+    conn.commit()
 
 def winners_since_search(year, cur, conn):
-    pass
+    cur.execute("""SELECT Winners.name, COUNT(Seasons.id) as num_wins
+                   FROM Seasons
+                   JOIN Winners ON Seasons.winner_id = Winners.id
+                   WHERE Seasons.end_year >= ?
+                   GROUP BY Seasons.winner_id""",
+                (year,))
+    return {team_name: num_wins for team_name, num_wins in cur.fetchall()}
 
 
 class TestAllMethods(unittest.TestCase):
@@ -229,18 +255,25 @@ class TestAllMethods(unittest.TestCase):
     def test_make_winners_table(self):
         self.cur2.execute('SELECT * from Winners')
         winners_list = self.cur2.fetchall()
+        self.assertEqual(len(winners_list), 7)
 
-        pass
+        self.cur2.execute("SELECT name FROM Winners WHERE name='Manchester City FC'")
+        self.assertEqual(self.cur2.fetchone()[0], 'Manchester City FC')
 
     def test_make_seasons_table(self):
         self.cur2.execute('SELECT * from Seasons')
         seasons_list = self.cur2.fetchall()
+        self.assertEqual(len(seasons_list), 28)
 
-        pass
+        self.cur2.execute("SELECT id FROM Seasons WHERE id=619")
+        self.assertEqual(self.cur2.fetchone()[0], 619)
 
     def test_winners_since_search(self):
+        winners_dict = winners_since_search('2019', self.cur2, self.conn2)
+        self.assertEqual(winners_dict['Manchester City FC'], 2)
 
-        pass
+        winners_dict = winners_since_search('2020', self.cur2, self.conn2)
+        self.assertEqual(winners_dict['Liverpool FC'], 1)
 
 
 def main():
